@@ -63,9 +63,11 @@ EP_ENT_USAGE = "/trae/api/v2/pay/web_user_ent_usage"
 #   需设备指纹头，否则上游以 9074（频率限制）拒绝。
 EP_CHECKIN_STATUS = "/trae/api/v2/ug/checkin_credits/status"
 EP_CHECKIN_CLAIM = "/trae/api/v2/ug/checkin_credits/claim"
-# 不可消耗池的商品 ID：209 = 200 档每日签到（官方客户端专用，本工具扣不到）。
-# 上游自 2026-09-23 起不再用 available_endpoint 区分，只能靠 product_id。
-UNUSABLE_PRODUCT_ID = 209
+# 历史沿革（勿再按 product_id=209 排除额度）：
+#   209 曾为「200 档每日签到」的官方客户端专用池，本工具扣不到，故早期实现将其剔除。
+#   但上游已把专属池升级为通用积分（官网显示「Work 专属积分 0 · 全部专属积分已升级为
+#   通用积分」），继续排除会漏算该包额度（实测漏 2000，面板少显示约 2000 分）。
+#   现仅保留 available_endpoint==1 作为历史兜底判据。
 
 _PENDING = {"status": "pending"}
 
@@ -651,6 +653,9 @@ class TraeChannel(Channel):
             raise RuntimeError(f"HTTP {r.status_code}: {r.text[:150]}")
         data = r.json() or {}
         packs = data.get("user_entitlement_pack_list") or []
+        # 上游权威汇总（优先用它作为总量/已用，避免自算口径偏差）：
+        #   usage_summary = {consumed_amount, total_amount, consumption_ratio}
+        summary = data.get("usage_summary") or {}
         packages, total_remain, total_size, unusable = [], 0, 0, 0
         for p in packs:
             if not isinstance(p, dict):
@@ -660,9 +665,11 @@ class TraeChannel(Channel):
             limit = int(float(quota.get("credits_limit") or 0))
             used = int(float((p.get("usage") or {}).get("credits_amount") or 0))
             remain = max(limit - used, 0)
-            # 可用性：product_id=209 为官方客户端专用池（历史兜底看 available_endpoint==1）
-            usable = not (base.get("product_id") == UNUSABLE_PRODUCT_ID
-                          or base.get("available_endpoint") == 1)
+            # 可用性：available_endpoint==1 为历史专用池标记。
+            # 注：product_id=209 曾为「官方客户端专用池」，但上游已将其升级为通用积分
+            # （官网「Work 专属积分 0 · 全部专属积分已升级为通用积分」），故不再排除，
+            # 否则会漏算该包额度（实测漏 2000）。
+            usable = base.get("available_endpoint") != 1
             exp = int(p.get("expire_time") or 0)
             packages.append({
                 "name": base.get("package_name") or p.get("display_desc") or "权益包",
@@ -679,7 +686,17 @@ class TraeChannel(Channel):
             else:
                 unusable += remain
         packages.sort(key=lambda x: (not x.get("usable"), x["cycle_end"] or "9999-12-31"))
-        # 到期时间升序（同可用性内），即将过期的排前面
+        # 到期时间升序（同可用性内），即将过期的排前面。
+        # 若上游给了 usage_summary，以其 total/consumed 为准（取整后与自算互相印证）。
+        try:
+            if summary.get("total_amount") is not None:
+                s_total = int(float(summary["total_amount"]))
+                s_consumed = int(float(summary.get("consumed_amount") or 0))
+                if s_total > 0:
+                    total_size = s_total
+                    total_remain = max(s_total - s_consumed, 0)
+        except (TypeError, ValueError):
+            pass
         return {"total_remain": total_remain, "total_size": total_size,
                 "unusable": unusable, "packages": packages, "error": None}
 
