@@ -212,6 +212,30 @@ def test_range_filter():
         check("只给 start（到最新）", s4["range"]["days"] == 3, f"got={s4['range']}")
 
 
+def test_credit_diff_by_model():
+    """余额差分记账必须同时写 by_day_model：区间模式（今日/本周）的按模型
+    数据从该表重算，漏写会导致「渠道有积分、模型显示 0」的假象。"""
+    print("[余额差分] 按天×模型积分（区间模式下模型积分不为 0）")
+    with tempfile.TemporaryDirectory() as td:
+        st = UsageStats(Path(td) / "usage.json", log_path=Path(td) / "log.jsonl")
+        st.diff_credits("trae", "u1", 1000, account="acc", model="m1")   # 首见建快照
+        st.diff_credits("trae", "u1", 800, account="acc", model="m1")    # 消耗 200
+        all_s = st.snapshot()
+        day_s = st.snapshot(start="2020-01-01", end="2099-12-31")        # 区间模式
+        check("全部模式 渠道积分 = 200", all_s["by_channel"]["trae"]["credits"] == 200,
+              f"got={all_s['by_channel']['trae']['credits']}")
+        check("全部模式 模型积分 = 200", all_s["by_model"][0][1]["credits"] == 200,
+              f"got={all_s['by_model'][0][1]['credits']}")
+        check("区间模式 渠道积分 = 200", day_s["by_channel"]["trae"]["credits"] == 200,
+              f"got={day_s['by_channel']['trae']['credits']}")
+        check("区间模式 模型积分 = 200（不得为 0）",
+              day_s["by_model"][0][1]["credits"] == 200,
+              f"got={day_s['by_model'][0][1]['credits']}")
+        # 余额上升（签到）不计消耗
+        st.diff_credits("trae", "u1", 1300, account="acc", model="m1")
+        check("余额上升不计消耗", st.snapshot()["by_channel"]["trae"]["credits"] == 200)
+
+
 def test_isolated():
     print("[静默失败] 统计异常不影响主链路")
     with tempfile.TemporaryDirectory() as td:
@@ -227,7 +251,7 @@ def test_isolated():
 
 
 def main():
-    for fn in (test_normalize, test_accumulate, test_range_filter, test_isolated):
+    for fn in (test_normalize, test_accumulate, test_range_filter, test_credit_diff_by_model, test_isolated):
         fn()
     print()
     if FAILED:

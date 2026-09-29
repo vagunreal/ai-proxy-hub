@@ -350,6 +350,12 @@ class UsageStats:
                     bd["credits"] = round(bd.get("credits", 0.0) + spend, 6)
                     bdc = d["by_day_channel"].setdefault(day, {}).setdefault(channel, _blank())
                     bdc["credits"] = round(bdc.get("credits", 0.0) + spend, 6)
+                    # 按天×模型也必须记：区间模式（今日/本周/本月）的按模型数据
+                    # 是从 by_day_model 重算的，漏写会导致区间下模型积分恒为 0。
+                    if model:
+                        bdm = d.setdefault("by_day_model", {}).setdefault(day, {}).setdefault(
+                            f"{channel}/{model}", _blank())
+                        bdm["credits"] = round(bdm.get("credits", 0.0) + spend, 6)
                     if account:
                         ba = d["by_account"].setdefault(account, _blank())
                         ba["credits"] = round(ba.get("credits", 0.0) + spend, 6)
