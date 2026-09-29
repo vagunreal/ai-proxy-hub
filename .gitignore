@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# 本地运行产物 / 日志
+*.log
+.DS_Store
+Thumbs.db
+
+# 个人 / 敏感信息（绝不提交）
+*.token
+*.key
+secrets.*
+
+
+# 运行时状态(含账号 uid/昵称,不入库)
+checkin_state.json
+
+# 模型注册表(运行时配置/探测缓存)
+models_registry.json
+models_registry.json
+api_keys.json
+
+# 渠道账号凭据(Trae/Qoder token 等,绝不提交)
+auths/
+# 运行时状态(含账号 uid/昵称/统计,不入库)
+current_account.json
+usage_stats.json
+# 请求日志（运行时产物，独立于统计）
+request_log.jsonl
